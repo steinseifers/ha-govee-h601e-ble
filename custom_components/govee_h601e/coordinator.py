@@ -255,6 +255,9 @@ class GoveeCoordinator:
         """
         pct = max(0, min(100, brightness_pct))
         if await self._send_command(cmd_brightness(pct), label="BRIGHTNESS"):
+            self.state.is_on = True
+            self.state.center.is_on = True
+            self.state.ring.is_on = True
             self.state.brightness_pct = pct
             self.state.center.brightness_pct = pct
             self.state.ring.brightness_pct = pct
@@ -268,6 +271,8 @@ class GoveeCoordinator:
         """
         k = snap_kelvin(kelvin)
         if await self._send_command(cmd_color_temp(k), label="COLOR_TEMP"):
+            self.state.is_on = True
+            self.state.center.is_on = True
             self.state.center.color_mode = LightColorMode.COLOR_TEMP
             self.state.center.color_temp_kelvin = k
             self._notify_listeners()
@@ -279,6 +284,8 @@ class GoveeCoordinator:
             r, g, b: Red, green, blue components (0–255).
         """
         if await self._send_command(cmd_color_rgb_panel(r, g, b), label="COLOR_PANEL"):
+            self.state.is_on = True
+            self.state.center.is_on = True
             self.state.center.color_mode = LightColorMode.RGB
             self.state.center.rgb = (r & 0xFF, g & 0xFF, b & 0xFF)
             self._notify_listeners()
@@ -290,6 +297,8 @@ class GoveeCoordinator:
             r, g, b: Red, green, blue components (0–255).
         """
         if await self._send_command(cmd_ring_diy(r, g, b), label="COLOR_RING"):
+            self.state.is_on = True
+            self.state.ring.is_on = True
             self.state.ring.color_mode = LightColorMode.RGB
             self.state.ring.rgb = (r & 0xFF, g & 0xFF, b & 0xFF)
             self.state.ring.effect = None  # Solid colour clears any active effect
@@ -315,6 +324,8 @@ class GoveeCoordinator:
             effect = RING_EFFECT_SOLID
 
         if await self._send_command(frame, label=f"RING_EFFECT_{effect.upper()}"):
+            self.state.is_on = True
+            self.state.ring.is_on = True
             self.state.ring.color_mode = LightColorMode.RGB
             self.state.ring.rgb = (r & 0xFF, g & 0xFF, b & 0xFF)
             self.state.ring.effect = effect

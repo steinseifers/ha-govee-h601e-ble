@@ -46,12 +46,14 @@ PLATFORMS: list[str] = ["light", "switch"]
 
 # ── BLE / protocol parameters ──────────────────────────────────────────────────
 
-HEARTBEAT_INTERVAL = 25
+HEARTBEAT_INTERVAL = 8
 """Seconds between keep-alive frames sent in persistent mode.
-The device itself sends a heartbeat every ~3 s; we respond less frequently."""
+The device itself sends a heartbeat every ~3 s; we send every 8 s to stay
+well within the device's inactivity timeout."""
 
-RECONNECT_INTERVAL = 30
-"""Seconds to wait before attempting a reconnect after a connection loss."""
+RECONNECT_INTERVAL = 5
+"""Base seconds for the first reconnect attempt after a connection loss.
+Subsequent attempts use exponential backoff: 5 → 10 → 20 → … → 600 s."""
 
 CONNECT_TIMEOUT = 20.0
 """Maximum seconds for the initial BLE connection attempt."""
