@@ -31,6 +31,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from datetime import timedelta
+from time import monotonic
 from typing import TYPE_CHECKING, Any
 
 # BleakError is bleak's base exception class.  bleak is a hard dependency of
@@ -141,6 +142,9 @@ class GoveeCoordinator:
         self._reconnect_attempt: int = 0
         # On-demand idle-disconnect timer
         self._od_idle_timer: asyncio.TimerHandle | None = None
+        # Timestamp of the last successfully written command (monotonic seconds).
+        # Used to suppress stale heartbeat echoes that carry pre-command state.
+        self._last_cmd_sent_at: float = 0.0
 
     @property
     def _repair_issue_id(self) -> str:
@@ -605,6 +609,7 @@ class GoveeCoordinator:
                 await client.write_gatt_char(
                     GOVEE_WRITE_UUID, encrypted, response=False
                 )
+            self._last_cmd_sent_at = monotonic()
             return True
         except BleakError as exc:
             _LOGGER.warning("[%s] Write failed for %s: %s", self.address, label, exc)
@@ -658,12 +663,12 @@ class GoveeCoordinator:
         if parsed.type == NotificationType.HEARTBEAT:
             _LOGGER.debug("[%s] Heartbeat received", self.address)
             if parsed.state_update is not None:
-                self._apply_state_update(parsed.state_update)
+                self._apply_state_update(parsed.state_update, from_heartbeat=True)
 
         elif parsed.type == NotificationType.STATE_UPDATE:
             if parsed.state_update is not None:
                 _LOGGER.debug("[%s] State update: %s", self.address, parsed.state_update)
-                self._apply_state_update(parsed.state_update)
+                self._apply_state_update(parsed.state_update, from_heartbeat=False)
             else:
                 _LOGGER.debug(
                     "[%s] Unrecognised state notification: %s",
@@ -674,26 +679,42 @@ class GoveeCoordinator:
             _LOGGER.debug("[%s] Unknown notification: %s", self.address, raw.hex())
 
     @callback
-    def _apply_state_update(self, update: StateUpdate) -> None:
+    def _apply_state_update(self, update: StateUpdate, from_heartbeat: bool = False) -> None:
         """Merge a :class:`StateUpdate` delta into :attr:`state`.
 
         Only non-``None`` fields in *update* are written.  Notifies registered
         listeners if any field actually changed.
+
+        ``from_heartbeat`` suppresses stale "off" power-state values that arrive
+        in a keepalive echo shortly after a command was sent.  The echo reflects
+        the device state *before* the command was processed, which would
+        incorrectly override the optimistic update we set on send.  Command
+        echoes (0x33/0x01 etc.) are always applied unconditionally.
         """
         changed = False
         s = self.state
 
-        if update.is_on is not None and s.is_on != update.is_on:
-            s.is_on = update.is_on
-            changed = True
+        # Suppress stale "off" from heartbeat if a command was sent recently.
+        _CMD_HOLD_SECS = 2.0
+        suppress_off = from_heartbeat and (monotonic() - self._last_cmd_sent_at) < _CMD_HOLD_SECS
 
-        if update.center_is_on is not None and s.center.is_on != update.center_is_on:
-            s.center.is_on = update.center_is_on
-            changed = True
+        if update.is_on is not None:
+            new_val = update.is_on if (update.is_on or not suppress_off) else s.is_on
+            if s.is_on != new_val:
+                s.is_on = new_val
+                changed = True
 
-        if update.ring_is_on is not None and s.ring.is_on != update.ring_is_on:
-            s.ring.is_on = update.ring_is_on
-            changed = True
+        if update.center_is_on is not None:
+            new_val = update.center_is_on if (update.center_is_on or not suppress_off) else s.center.is_on
+            if s.center.is_on != new_val:
+                s.center.is_on = new_val
+                changed = True
+
+        if update.ring_is_on is not None:
+            new_val = update.ring_is_on if (update.ring_is_on or not suppress_off) else s.ring.is_on
+            if s.ring.is_on != new_val:
+                s.ring.is_on = new_val
+                changed = True
 
         if update.brightness_pct is not None and s.brightness_pct != update.brightness_pct:
             pct = update.brightness_pct

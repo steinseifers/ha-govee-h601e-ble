@@ -396,9 +396,6 @@ class GoveeRingLight(_GoveeBaseLight):
         if not self._coordinator.state.is_on:
             await self._coordinator.async_turn_on()
 
-        if not self._coordinator.state.ring.is_on:
-            self._coordinator.state.ring.is_on = True
-
         if ATTR_BRIGHTNESS in kwargs:
             pct = brightness_ha_to_pct(kwargs[ATTR_BRIGHTNESS])
             await self._coordinator.async_set_brightness(pct)
@@ -407,18 +404,13 @@ class GoveeRingLight(_GoveeBaseLight):
         rgb = kwargs.get(ATTR_RGB_COLOR)
 
         if effect is not None:
-            # Use supplied colour or fall back to the current ring colour
-            if rgb is not None:
-                r, g, b = rgb
-            else:
-                r, g, b = self._coordinator.state.ring.rgb or (255, 255, 255)
+            r, g, b = rgb if rgb is not None else (self._coordinator.state.ring.rgb or (255, 255, 255))
             await self._coordinator.async_set_ring_effect(effect, r, g, b)
-        elif rgb is not None:
-            r, g, b = rgb
-            await self._coordinator.async_set_ring_rgb(r, g, b)
         else:
-            # No colour or effect attribute: propagate is_on state to listeners
-            self._coordinator.notify_listeners()
+            # Always send a ring colour command – the ring has no simple on/off
+            # and needs an explicit 0x50 DIY frame to activate / confirm its colour.
+            r, g, b = rgb if rgb is not None else (self._coordinator.state.ring.rgb or (255, 255, 255))
+            await self._coordinator.async_set_ring_rgb(r, g, b)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entire lamp off (shared power register)."""
