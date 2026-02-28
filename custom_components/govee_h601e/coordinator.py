@@ -351,11 +351,11 @@ class GoveeCoordinator:
                 self._hass, self.address, connectable=True
             )
             if ble_device is None:
-                _LOGGER.warning(
-                    "[%s] Device not found in Bluetooth cache – "
-                    "is Bluetooth active and the device in range?",
+                _LOGGER.debug(
+                    "[%s] Device not in Bluetooth cache yet – will retry",
                     self.address,
                 )
+                self._schedule_reconnect()
                 return False
 
             _LOGGER.debug("[%s] Connecting…", self.address)
@@ -609,7 +609,11 @@ class GoveeCoordinator:
                 await client.write_gatt_char(
                     GOVEE_WRITE_UUID, encrypted, response=False
                 )
-            self._last_cmd_sent_at = monotonic()
+            # Only stamp control commands (proto_type=0x33), not keepalives (0xAA).
+            # Keepalive echoes must still be able to correctly report "off" when
+            # the device is genuinely off (e.g. hardware-button press).
+            if plain_frame[0] != 0xAA:
+                self._last_cmd_sent_at = monotonic()
             return True
         except BleakError as exc:
             _LOGGER.warning("[%s] Write failed for %s: %s", self.address, label, exc)
