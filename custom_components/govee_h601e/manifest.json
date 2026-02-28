@@ -9,9 +9,9 @@
   "codeowners": [],
   "config_flow": true,
   "dependencies": ["bluetooth"],
-  "documentation": "https://github.com/YOUR_USERNAME/govee-h601e-ha",
+  "documentation": "https://github.com/steinseifers/govee-h601e-ha",
   "integration_type": "device",
   "iot_class": "local_push",
   "requirements": ["bleak-retry-connector>=3.6.0", "pycryptodome>=3.19.0"],
-  "version": "1.0.0"
+  "version": "1.0.1"
 }
